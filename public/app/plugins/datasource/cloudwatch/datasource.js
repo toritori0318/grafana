@@ -118,15 +118,38 @@ function (angular, _, moment, dateMath, kbn, templatingVariable) {
 
         if (res.results) {
           _.forEach(res.results, function (queryRes) {
-            _.forEach(queryRes.series, function (series) {
-              data.push({target: series.name, datapoints: series.points});
-            });
+            var dynamoDBdata = searchDynamoDBRefId(queryRes.refId, request.queries)
+            if(dynamoDBdata == null) {
+              _.forEach(queryRes.series, function (series) {
+                data.push({target: series.name, datapoints: series.points});
+              });
+            } else {
+              var period = dynamoDBdata.period
+              _.forEach(queryRes.series, function (series) {
+                var map_series = _.map(series.points, function(p) {
+                  if(p[0] && p[0] > 0) {
+                    p[0] = p[0] / period
+                  }
+                  return p
+                })
+                data.push({target: series.name, datapoints: map_series});
+              });
+            }
           });
         }
 
         return {data: data};
       });
     };
+
+    function searchDynamoDBRefId(refId, reqData) {
+      for (var i=0;i<reqData.length;i++) {
+        if(reqData[i].namespace == "AWS/DynamoDB" && reqData[i].metricName.indexOf('Consumed') >= 0 && _.includes(reqData[i].statistics, "Sum") && reqData[i].refId == refId) {
+          return reqData[i]
+        }
+      }
+      return null
+    }
 
     function transformSuggestDataFromTable(suggestData) {
       return _.map(suggestData.results['metricFindQuery'].tables[0].rows, function (v) {
